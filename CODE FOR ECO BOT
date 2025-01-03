@@ -1,0 +1,258 @@
+Arduino Code (For Navigation and Robotic Arm Control)
+This Arduino code handles movement, obstacle avoidance, and the robotic arm for picking up objects. The AI-based vision will be processed on a connected system like a Raspberry Pi.
+
+Hardware Assumptions
+Motor Driver: L298N for controlling motors.
+Ultrasonic Sensor: HC-SR04 for obstacle detection.
+Robotic Arm: Servos for gripping and lifting.
+#include <Servo.h>
+
+// Motor driver pins
+const int motorLeftForward = 5;
+const int motorLeftBackward = 6;
+const int motorRightForward = 9;
+const int motorRightBackward = 10;
+
+// Ultrasonic sensor pins
+const int trigPin = 3;
+const int echoPin = 2;
+
+// Servo pins
+Servo gripperServo;
+Servo armServo;
+
+// Ultrasonic sensor variables
+long duration;
+int distance;
+
+// Function to measure distance
+int getDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  return duration * 0.034 / 2; // Convert to cm
+}
+
+void setup() {
+  // Initialize motor pins
+  pinMode(motorLeftForward, OUTPUT);
+  pinMode(motorLeftBackward, OUTPUT);
+  pinMode(motorRightForward, OUTPUT);
+  pinMode(motorRightBackward, OUTPUT);
+
+  // Initialize ultrasonic sensor pins
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  // Initialize servos
+  gripperServo.attach(11);
+  armServo.attach(12);
+  gripperServo.write(90); // Initialize to open position
+  armServo.write(0);      // Arm in resting position
+
+  Serial.begin(9600); // Start serial communication
+}
+
+void loop() {
+  distance = getDistance();
+  Serial.println(distance);
+
+  // Obstacle avoidance
+  if (distance > 10 || distance == 0) { // If no obstacle, move forward
+    digitalWrite(motorLeftForward, HIGH);
+    digitalWrite(motorLeftBackward, LOW);
+    digitalWrite(motorRightForward, HIGH);
+    digitalWrite(motorRightBackward, LOW);
+  } else { // Stop and pick up object
+    digitalWrite(motorLeftForward, LOW);
+    digitalWrite(motorRightForward, LOW);
+
+    // Simulate picking up an object
+    pickUpObject();
+  }
+}
+
+void pickUpObject() {
+  // Lower the arm
+  armServo.write(90);
+  delay(500);
+
+  // Close the gripper
+  gripperServo.write(0);
+  delay(500);
+
+  // Lift the arm
+  armServo.write(0);
+  delay(500);
+
+  // Move backward briefly
+  digitalWrite(motorLeftBackward, HIGH);
+  digitalWrite(motorRightBackward, HIGH);
+  delay(1000);
+
+  // Stop moving
+  digitalWrite(motorLeftBackward, LOW);
+  digitalWrite(motorRightBackward, LOW);
+}
+
+ython Code (For AI-Based Plastic Detection)
+This Python script runs on a Raspberry Pi, processes the video feed using OpenCV, and sends commands to the Arduino via Serial.
+
+Requirements
+Python libraries: OpenCV, NumPy, PySerial.
+Pretrained model for detecting plastic waste.
+python (cuz i know python best but i will rty js sorry about js if there are any errors )
+
+import cv2
+import serial
+import time
+
+# Initialize serial communication with Arduino
+arduino = serial.Serial('COM3', 9600)  # Replace 'COM3' with your port
+time.sleep(2)
+
+# Load pre-trained model (e.g., YOLO or TensorFlow model)
+# Replace with your trained model for plastic detection
+model_path = 'model.pb'
+net = cv2.dnn.readNet(model_path)
+
+# Initialize webcam
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Preprocess frame for model
+    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
+    net.setInput(blob)
+    detections = net.forward()
+
+    # Analyze detections
+    detected_plastic = False
+    for detection in detections:
+        # Example detection logic (use your model's output format)
+        if detection[0] == "plastic":  # Replace with your class label
+            detected_plastic = True
+            break
+
+    # Send commands to Arduino
+    if detected_plastic:
+        arduino.write(b'P')  # Command for picking up plastic
+        print("Plastic detected!")
+    else:
+        arduino.write(b'N')  # No plastic detected
+        print("No plastic detected.")
+
+    # Display frame
+    cv2.imshow("EcoBot Camera", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+arduino.close()
+WARNNING I AM TRYING AI IMPEMENTATION IN JS COD CAN BE FALTY !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!)
+const videoElement = document.getElementById("webcam");
+const canvasElement = document.getElementById("outputCanvas");
+const canvasCtx = canvasElement.getContext("2d");
+let model;
+
+// Initialize Serial Communication with Arduino (Using Web Serial API)
+let port;
+async function connectToArduino() {
+  if ("serial" in navigator) {
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      console.log("Connected to Arduino.");
+    } catch (error) {
+      console.error("Failed to connect to Arduino:", error);
+    }
+  } else {
+    console.error("Web Serial API is not supported in this browser.");
+  }
+}
+
+// Load the COCO-SSD Model
+async function loadModel() {
+  model = await cocoSsd.load();
+  console.log("Model loaded!");
+}
+
+// Start Webcam Stream
+async function startWebcam() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  videoElement.srcObject = stream;
+
+  videoElement.onloadedmetadata = () => {
+    videoElement.play();
+    detectPlastic();
+  };
+}
+
+// Plastic Detection
+async function detectPlastic() {
+  if (model && videoElement.readyState === 4) {
+    const predictions = await model.detect(videoElement);
+
+    // Clear canvas
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+    let detectedPlastic = false;
+
+    predictions.forEach((prediction) => {
+      if (prediction.class === "bottle" || prediction.class === "plastic bag") {
+        detectedPlastic = true;
+
+        // Draw bounding box
+        canvasCtx.strokeStyle = "green";
+        canvasCtx.lineWidth = 4;
+        canvasCtx.strokeRect(
+          prediction.bbox[0],
+          prediction.bbox[1],
+          prediction.bbox[2],
+          prediction.bbox[3]
+        );
+
+        // Draw label
+        canvasCtx.font = "18px Arial";
+        canvasCtx.fillStyle = "green";
+        canvasCtx.fillText(
+          `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+          prediction.bbox[0],
+          prediction.bbox[1] - 10
+        );
+      }
+    });
+
+    // Send commands to Arduino
+    if (port && port.writable) {
+      const writer = port.writable.getWriter();
+      if (detectedPlastic) {
+        await writer.write(new TextEncoder().encode("P")); // Command for "Plastic Detected"
+        console.log("Plastic detected: Command 'P' sent.");
+      } else {
+        await writer.write(new TextEncoder().encode("N")); // Command for "No Plastic Detected"
+        console.log("No plastic detected: Command 'N' sent.");
+      }
+      writer.releaseLock();
+    }
+  }
+
+  requestAnimationFrame(detectPlastic); // Continue detecting
+}
+
+// Initialize Everything
+(async () => {
+  await connectToArduino(); // Connect to Arduino
+  await loadModel();        // Load AI model
+  startWebcam();            // Start webcam stream
+})();
+
+
